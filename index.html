@@ -101,8 +101,8 @@ let data = {};               // { "2026-09-01": {s,e,b,std,m} }
 
 // ---------- storage: Supabase ----------
 // ★ 본인 프로젝트 값으로 바꾸세요 (Supabase → Project Settings → API)
-const SUPABASE_URL  = 'https://hpbfmozhpfzwjkftnbru.supabase.co';
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhwYmZtb3pocGZ6d2prZnRuYnJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3Mzk2MTgsImV4cCI6MjEwNDMxNTYxOH0.h4SKRKU2dQpd7veNfmteQ-aV_egIge8JFli0ocgPZPY';
+const SUPABASE_URL  = 'https://YOUR-PROJECT.supabase.co';
+const SUPABASE_ANON = 'YOUR-ANON-PUBLIC-KEY';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 let user = null;
 let memoryStore = {};        // 로그인 전 임시 저장
@@ -187,7 +187,7 @@ function render(){
     days.forEach((dt,di)=>{
       const k=iso(dt); const r=data[k]||(data[k]={});
       const c=calcRow(r);
-      const tr=document.createElement('tr');
+      const tr=document.createElement('tr'); tr.dataset.k=k;
       if(di===0){ const th=document.createElement('th'); th.className='week'; th.rowSpan=5; th.textContent=`${month}월 ${wi+1}주`; tr.appendChild(th); }
       const dow=dt.getDay();
       tr.innerHTML+=`<td class="date${k===today?' today':''}">${pad2(dt.getMonth()+1)}/${pad2(dt.getDate())}<span class="dow">(${DOW[dow]})</span></td>`;
@@ -201,8 +201,8 @@ function render(){
       body.appendChild(tr);
       if(c.work!=null){ wWork+=c.work; wStd+=c.std; }
     });
-    const tr=document.createElement('tr'); tr.className='total';
-    tr.innerHTML=`<td colspan="5">주간 합계</td><td class="calc">${fmt(wWork)}</td><td>${fmt(wStd)}</td>${diffCell(wWork,wStd,true)}<td></td>`;
+    const tr=document.createElement('tr'); tr.className='total'; tr.dataset.w=wi;
+    tr.innerHTML=`<td colspan="5">주간 합계</td><td class="calc">${fmt(wWork)}</td><td class="stdsum">${fmt(wStd)}</td>${diffCell(wWork,wStd,true)}<td></td>`;
     body.appendChild(tr);
     mWork+=wWork; mStd+=wStd;
   });
@@ -222,10 +222,33 @@ document.getElementById('body').addEventListener('input',e=>{
   const el=e.target; if(!el.dataset.k) return;
   const r=data[el.dataset.k]||(data[el.dataset.k]={});
   r[el.dataset.f]=el.value;
-  if(el.dataset.f==='s'||el.dataset.f==='e'){ /* 휴게는 사용자가 직접 바꾼 경우만 유지 */ }
   save();
-  if(el.dataset.f!=='m'){ const focus=[el.dataset.k,el.dataset.f]; render(); const n=document.querySelector(`input[data-k="${focus[0]}"][data-f="${focus[1]}"]`); if(n&&document.activeElement!==n){n.focus();} }
+  if(el.dataset.f!=='m') refreshCalc();   // 입력칸은 그대로 두고 숫자만 갱신 (타이핑 중 끊김 방지)
 });
+// 입력 요소를 새로 만들지 않고 근로시간·기준대비·합계만 다시 계산
+function refreshCalc(){
+  const {weeks}=weeksOf(monthKey);
+  let mWork=0,mStd=0;
+  weeks.forEach((days,wi)=>{
+    let wWork=0,wStd=0;
+    days.forEach(dt=>{
+      const k=iso(dt); const r=data[k]||{}; const c=calcRow(r);
+      const tr=document.querySelector(`tr[data-k="${k}"]`); if(!tr) return;
+      tr.querySelector('td.calc').textContent=c.work!=null?fmt(c.work):'';
+      const bi=tr.querySelector('td.brk input');
+      if(document.activeElement!==bi) bi.value=c.brk!=null?pad2(Math.floor(c.brk/60))+':'+pad2(c.brk%60):'';
+      tr.querySelector('td.diff').outerHTML=diffCell(c.work,c.std);
+      if(c.work!=null){ wWork+=c.work; wStd+=c.std; }
+    });
+    const tt=document.querySelector(`tr.total[data-w="${wi}"]`);
+    if(tt){ tt.querySelector('td.calc').textContent=fmt(wWork); tt.querySelector('td.stdsum').textContent=fmt(wStd); tt.querySelector('td.diff').outerHTML=diffCell(wWork,wStd,true); }
+    mWork+=wWork; mStd+=wStd;
+  });
+  document.getElementById('sumWork').textContent=fmt(mWork);
+  document.getElementById('sumStd').textContent=fmt(mStd);
+  const sd=document.getElementById('sumDiff'); const d=mWork-mStd;
+  sd.textContent=(d>0?'+':d<0?'-':'')+fmt(Math.abs(d)); sd.className='val '+(d>0?'over':d<0?'under':'');
+}
 document.getElementById('body').addEventListener('click',e=>{
   const b=e.target.closest('button.now'); if(!b) return;
   const r=data[b.dataset.k]||(data[b.dataset.k]={}); r[b.dataset.f]=nowHM(); save(); render();
