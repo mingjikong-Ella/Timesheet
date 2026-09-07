@@ -102,8 +102,8 @@ let data = {};               // { "2026-09-01": {s,e,b,std,m} }
 
 // ---------- storage: Supabase ----------
 // ★ 본인 프로젝트 값으로 바꾸세요 (Supabase → Project Settings → API)
-const SUPABASE_URL  = 'https://YOUR-PROJECT.supabase.co';
-const SUPABASE_ANON = 'YOUR-ANON-PUBLIC-KEY';
+const SUPABASE_URL  = 'https://hpbfmozhpfzwjkftnbru.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhwYmZtb3pocGZ6d2prZnRuYnJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3Mzk2MTgsImV4cCI6MjEwNDMxNTYxOH0.h4SKRKU2dQpd7veNfmteQ-aV_egIge8JFli0ocgPZPY';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 let user = null;
 let memoryStore = {};        // 로그인 전 임시 저장
