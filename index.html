@@ -66,7 +66,7 @@
 <header>
   <div>
     <h1>주40시간 유연근무 트래커</h1>
-    <div class="note">8시간 이상 근무 시 휴게 1시간, 4시간 이상 8시간 미만 시 30분 자동 적용 · 직접 고칠 수 있어요</div>
+    <div class="note">휴게시간 1시간은 자동으로 빠져요 · 주 기준 37:30, 부족하면 빨간색으로 표시돼요</div>
   </div>
   <div class="month">
     <button id="prev" title="이전 달">‹</button>
@@ -87,7 +87,7 @@
 <main>
   <table>
     <thead><tr>
-      <th></th><th>일자</th><th>시작시간</th><th>종료시간</th><th>휴게시간</th><th>근로시간</th><th>기준 근로시간</th><th>기준 대비</th><th>비고</th>
+      <th></th><th>일자</th><th>시작시간</th><th>종료시간</th><th>근로시간</th><th>기준</th><th>기준 대비</th><th>비고</th>
     </tr></thead>
     <tbody id="body"></tbody>
   </table>
@@ -95,6 +95,7 @@
 </main>
 <script>
 const STD_DEFAULT = '07:30';
+const BREAK_MIN = 60;      // 휴게시간(분) — 항상 차감
 const DOW = ['일','월','화','수','목','금','토'];
 let monthKey = '';           // "2026-09"
 let data = {};               // { "2026-09-01": {s,e,b,std,m} }
@@ -152,13 +153,12 @@ const pad2 = n => String(n).padStart(2,'0');
 const nowHM = () => { const d=new Date(); return pad2(d.getHours())+':'+pad2(d.getMinutes()); };
 const iso = d => d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
 
-function autoBreak(gross){ if(gross==null) return null; if(gross>=480) return 60; if(gross>=240) return 30; return 0; }
 
 function calcRow(r){
   const s=toMin(r.s), e=toMin(r.e);
   if(s==null||e==null) return {work:null, brk:null, std:toMin(r.std||STD_DEFAULT)};
   let gross=e-s; if(gross<0) gross+=1440;          // 자정 넘김 처리 (엑셀의 IF(E<D,1,0)와 동일)
-  const brk = r.b!=null && r.b!=='' ? toMin(r.b) : autoBreak(gross);
+  const brk = BREAK_MIN;                             // 휴게 1시간 고정
   return {work:Math.max(0,gross-brk), brk, std:toMin(r.std||STD_DEFAULT)};
 }
 
@@ -193,18 +193,17 @@ function render(){
       tr.innerHTML+=`<td class="date${k===today?' today':''}">${pad2(dt.getMonth()+1)}/${pad2(dt.getDate())}<span class="dow">(${DOW[dow]})</span></td>`;
       tr.innerHTML+=`<td class="time"><input type="time" data-k="${k}" data-f="s" value="${r.s||''}"><button class="now" data-k="${k}" data-f="s">지금</button></td>`;
       tr.innerHTML+=`<td class="time"><input type="time" data-k="${k}" data-f="e" value="${r.e||''}"><button class="now" data-k="${k}" data-f="e">지금</button></td>`;
-      tr.innerHTML+=`<td class="brk"><input type="time" data-k="${k}" data-f="b" value="${c.brk!=null?pad2(Math.floor(c.brk/60))+':'+pad2(c.brk%60):''}" title="비우면 자동 적용"></td>`;
       tr.innerHTML+=`<td class="calc">${c.work!=null?fmt(c.work):''}</td>`;
       tr.innerHTML+=`<td class="std"><input type="time" data-k="${k}" data-f="std" value="${r.std||STD_DEFAULT}"></td>`;
       tr.innerHTML+=diffCell(c.work,c.std);
       tr.innerHTML+=`<td class="memo"><input type="text" data-k="${k}" data-f="m" value="${(r.m||'').replace(/"/g,'&quot;')}" placeholder=""></td>`;
       body.appendChild(tr);
-      if(c.work!=null){ wWork+=c.work; wStd+=c.std; }
+      if(c.work!=null){ wWork+=c.work; } wStd+=c.std;
     });
     const tr=document.createElement('tr'); tr.className='total'; tr.dataset.w=wi;
-    tr.innerHTML=`<td colspan="5">주간 합계</td><td class="calc">${fmt(wWork)}</td><td class="stdsum">${fmt(wStd)}</td>${diffCell(wWork,wStd,true)}<td></td>`;
+    tr.innerHTML=`<td colspan="4">주간 합계</td><td class="calc">${fmt(wWork)}</td><td class="stdsum">${fmt(wStd)}</td>${diffCell(wWork,wStd,true)}<td></td>`;
     body.appendChild(tr);
-    mWork+=wWork; mStd+=wStd;
+    mWork+=wWork; if(wWork>0) mStd+=wStd;
   });
   document.getElementById('sumWork').textContent=fmt(mWork);
   document.getElementById('sumStd').textContent=fmt(mStd);
@@ -235,14 +234,12 @@ function refreshCalc(){
       const k=iso(dt); const r=data[k]||{}; const c=calcRow(r);
       const tr=document.querySelector(`tr[data-k="${k}"]`); if(!tr) return;
       tr.querySelector('td.calc').textContent=c.work!=null?fmt(c.work):'';
-      const bi=tr.querySelector('td.brk input');
-      if(document.activeElement!==bi) bi.value=c.brk!=null?pad2(Math.floor(c.brk/60))+':'+pad2(c.brk%60):'';
       tr.querySelector('td.diff').outerHTML=diffCell(c.work,c.std);
-      if(c.work!=null){ wWork+=c.work; wStd+=c.std; }
+      if(c.work!=null){ wWork+=c.work; } wStd+=c.std;
     });
     const tt=document.querySelector(`tr.total[data-w="${wi}"]`);
     if(tt){ tt.querySelector('td.calc').textContent=fmt(wWork); tt.querySelector('td.stdsum').textContent=fmt(wStd); tt.querySelector('td.diff').outerHTML=diffCell(wWork,wStd,true); }
-    mWork+=wWork; mStd+=wStd;
+    mWork+=wWork; if(wWork>0) mStd+=wStd;
   });
   document.getElementById('sumWork').textContent=fmt(mWork);
   document.getElementById('sumStd').textContent=fmt(mStd);
