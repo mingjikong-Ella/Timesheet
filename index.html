@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>주40시간 유연근무 트래커</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
     --paper:#fbfaf7; --ink:#1d2433; --muted:#6b7280; --line:#d9d6cf; --line-soft:#ecebe6;
@@ -53,6 +54,11 @@
   tr.total td:first-child{text-align:right;padding-right:10px;color:var(--muted);font-weight:600}
   .hint{margin-top:10px;font-size:12px;color:var(--muted)}
   .saved{margin-left:12px;font-size:12px;color:var(--muted)}
+  .auth{display:flex;align-items:center;gap:8px;font-size:13px}
+  .auth input{border:1px solid var(--line);border-radius:6px;padding:5px 8px;font:inherit;width:200px}
+  .auth button{border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:6px;padding:5px 10px;font:inherit;cursor:pointer}
+  .auth button.ghost{background:#fff;color:var(--accent)}
+  .auth .who{color:var(--muted)}
   @media (max-width:640px){header,main{padding-left:12px;padding-right:12px}.summary{margin-left:0}}
 </style>
 </head>
@@ -67,6 +73,10 @@
     <input type="month" id="month">
     <button id="next" title="다음 달">›</button>
     <span class="saved" id="saved"></span>
+  </div>
+  <div class="auth" id="auth">
+    <input type="email" id="email" placeholder="이메일 → 로그인 링크 받기">
+    <button id="login">로그인 링크 보내기</button>
   </div>
   <div class="summary">
     <div><div class="lbl">이번 달 근로시간</div><div class="val" id="sumWork">0:00</div></div>
@@ -88,25 +98,52 @@ const STD_DEFAULT = '07:30';
 const DOW = ['일','월','화','수','목','금','토'];
 let monthKey = '';           // "2026-09"
 let data = {};               // { "2026-09-01": {s,e,b,std,m} }
-let memoryStore = {};        // fallback if window.storage unavailable
 
-// ---------- storage ----------
+// ---------- storage: Supabase ----------
+// ★ 본인 프로젝트 값으로 바꾸세요 (Supabase → Project Settings → API)
+const SUPABASE_URL  = 'https://YOUR-PROJECT.supabase.co';
+const SUPABASE_ANON = 'YOUR-ANON-PUBLIC-KEY';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+let user = null;
+let memoryStore = {};        // 로그인 전 임시 저장
+
 async function load(key){
-  try{
-    if(window.storage){ const r = await window.storage.get('worklog:'+key, false); return r ? JSON.parse(r.value) : {}; }
-  }catch(e){ /* not found */ }
-  return memoryStore[key] || {};
+  if(!user) return memoryStore[key] || {};
+  const {data:row, error} = await sb.from('work_log').select('data').eq('month', key).maybeSingle();
+  if(error){ flash('불러오기 실패: '+error.message); return memoryStore[key]||{}; }
+  return row ? row.data : {};
 }
 let saveTimer=null;
 function save(){
   clearTimeout(saveTimer);
   saveTimer=setTimeout(async()=>{
     memoryStore[monthKey]=data;
-    try{ if(window.storage){ await window.storage.set('worklog:'+monthKey, JSON.stringify(data), false); } flash('저장됨'); }
-    catch(e){ flash('저장 실패 — 이 세션에서만 유지돼요'); }
-  },300);
+    if(!user){ flash('로그인하면 서버에 저장돼요'); return; }
+    const {error} = await sb.from('work_log').upsert(
+      {user_id:user.id, month:monthKey, data, updated_at:new Date().toISOString()},
+      {onConflict:'user_id,month'});
+    flash(error ? '저장 실패: '+error.message : '서버에 저장됨');
+  },400);
 }
-function flash(t){ const s=document.getElementById('saved'); s.textContent=t; setTimeout(()=>s.textContent='',1500); }
+function flash(t){ const s=document.getElementById('saved'); s.textContent=t; setTimeout(()=>s.textContent='',2000); }
+
+// ---------- auth: 매직링크 ----------
+function renderAuth(){
+  const a=document.getElementById('auth');
+  a.innerHTML = user
+    ? `<span class="who">${user.email}</span><button class="ghost" id="logout">로그아웃</button>`
+    : `<input type="email" id="email" placeholder="이메일 → 로그인 링크 받기"><button id="login">로그인 링크 보내기</button>`;
+  if(user) document.getElementById('logout').onclick=async()=>{ await sb.auth.signOut(); };
+  else document.getElementById('login').onclick=async()=>{
+    const email=document.getElementById('email').value.trim(); if(!email) return;
+    const {error}=await sb.auth.signInWithOtp({email, options:{emailRedirectTo:location.href.split('#')[0]}});
+    flash(error ? '전송 실패: '+error.message : '메일함에서 링크를 눌러 주세요');
+  };
+}
+sb.auth.onAuthStateChange(async(_e, session)=>{
+  user = session?.user || null; renderAuth();
+  if(monthKey){ data = await load(monthKey); render(); }
+});
 
 // ---------- time helpers ----------
 const toMin = t => { if(!t) return null; const [h,m]=t.split(':').map(Number); return h*60+m; };
