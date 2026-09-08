@@ -51,7 +51,8 @@
   td.memo input:focus{background:#fff;box-shadow:inset 0 0 0 2px var(--accent)}
   tr.total td{background:var(--head);font-weight:700;height:34px;border-top:1px solid var(--line);border-bottom:2px solid var(--line)}
   tr.total td.diff.over{background:var(--over-bg)} tr.total td.diff.under{background:var(--under-bg)}
-  tr.total td.diff.ok{color:var(--ok);background:var(--ok-bg)}
+  tr.total td.calc.under{color:var(--under);background:var(--under-bg)}
+  tr.total td.calc.ok{color:var(--ok);background:var(--ok-bg)}
   tr.total td:first-child{text-align:right;padding-right:10px;color:var(--muted);font-weight:600}
   .hint{margin-top:10px;font-size:12px;color:var(--muted)}
   .saved{margin-left:12px;font-size:12px;color:var(--muted)}
@@ -203,7 +204,7 @@ function render(){
       if(c.work!=null){ wWork+=c.work; } wStd+=c.std;
     });
     const tr=document.createElement('tr'); tr.className='total'; tr.dataset.w=wi;
-    tr.innerHTML=`<td colspan="4">주간 합계</td><td class="calc">${fmt(wWork)}</td><td class="stdsum">${fmt(wStd)}</td>${diffCell(wWork,wStd,true)}<td></td>`;
+    tr.innerHTML=`<td colspan="4">주간 합계</td><td class="calc ${weekCls(wWork,wStd)}">${fmt(wWork)}</td><td class="stdsum">${fmt(wStd)}</td>${diffCell(wWork,wStd,true)}<td></td>`;
     body.appendChild(tr);
     mWork+=wWork; if(wWork>0) mStd+=wStd;
   });
@@ -212,10 +213,10 @@ function render(){
   const sd=document.getElementById('sumDiff'); const d=mWork-mStd;
   sd.textContent=(d>0?'+':d<0?'-':'')+fmt(Math.abs(d)); sd.className='val '+(d>0?'over':d<0?'under':'');
 }
+const weekCls=(w,std)=>{ const d=w-std; return (d<0||d>WEEK_TOL)?'under':'ok'; };
 function diffCell(work,std,total){
   if(work==null && !total) return `<td class="diff"></td>`;
-  const d=(work||0)-std;
-  const cls = total ? ((d<0||d>WEEK_TOL)?'under':'ok') : (d>0?'over':d<0?'under':'zero');
+  const d=(work||0)-std; const cls=d>0?'over':d<0?'under':'zero';
   return `<td class="diff ${cls}">${d>0?'+':d<0?'-':'±'}${fmt(Math.abs(d))}</td>`;
 }
 
@@ -241,7 +242,7 @@ function refreshCalc(){
       if(c.work!=null){ wWork+=c.work; } wStd+=c.std;
     });
     const tt=document.querySelector(`tr.total[data-w="${wi}"]`);
-    if(tt){ tt.querySelector('td.calc').textContent=fmt(wWork); tt.querySelector('td.stdsum').textContent=fmt(wStd); tt.querySelector('td.diff').outerHTML=diffCell(wWork,wStd,true); }
+    if(tt){ const tc=tt.querySelector('td.calc'); tc.textContent=fmt(wWork); tc.className='calc '+weekCls(wWork,wStd); tt.querySelector('td.stdsum').textContent=fmt(wStd); tt.querySelector('td.diff').outerHTML=diffCell(wWork,wStd,true); }
     mWork+=wWork; if(wWork>0) mStd+=wStd;
   });
   document.getElementById('sumWork').textContent=fmt(mWork);
