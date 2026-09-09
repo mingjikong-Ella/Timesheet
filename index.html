@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>주40시간 유연근무 트래커</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
 <style>
   :root{
     --paper:#fbfaf7; --ink:#1d2433; --muted:#6b7280; --line:#d9d6cf; --line-soft:#ecebe6;
@@ -104,9 +105,10 @@ let monthKey = '';           // "2026-09"
 let data = {};               // { "2026-09-01": {s,e,b,std,m} }
 
 // ---------- storage: Supabase ----------
-// ★ 본인 프로젝트 값으로 바꾸세요 (Supabase → Project Settings → API)
-const SUPABASE_URL  = 'https://hpbfmozhpfzwjkftnbru.supabase.co/rest/v1/';
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhwYmZtb3pocGZ6d2prZnRuYnJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3Mzk2MTgsImV4cCI6MjEwNDMxNTYxOH0.h4SKRKU2dQpd7veNfmteQ-aV_egIge8JFli0ocgPZPY';
+// ★ URL/키는 config.js에 있어요 — index.html만 교체해도 연결이 유지됩니다
+const SUPABASE_URL  = (window.SUPABASE_URL||'').replace(/\/rest\/v1\/?$/,'').replace(/\/$/,'');
+const SUPABASE_ANON = window.SUPABASE_ANON;
+if(!SUPABASE_URL || SUPABASE_URL.includes('YOUR-PROJECT')) alert('config.js에 Supabase URL/키를 넣어 주세요');
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 let user = null;
 let memoryStore = {};        // 로그인 전 임시 저장
