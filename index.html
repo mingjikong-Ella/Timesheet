@@ -55,6 +55,15 @@
   tr.total td.calc.under{color:var(--under);background:var(--under-bg)}
   tr.total td.calc.ok{color:var(--ok);background:var(--ok-bg)}
   tr.total td:first-child{text-align:right;padding-right:10px;color:var(--muted);font-weight:600}
+  td.fb input{font-weight:700}
+  td.fr input{color:#dc2626}
+  td.fy input{background:#fff3a3}
+  td.fy input:focus{background:#fff9c9}
+  .ctx{position:fixed;z-index:50;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.12);padding:6px;display:none;min-width:160px;font-size:13px}
+  .ctx button{display:flex;align-items:center;gap:8px;width:100%;border:0;background:transparent;text-align:left;padding:7px 10px;border-radius:6px;cursor:pointer;font:inherit;color:var(--ink)}
+  .ctx button:hover{background:var(--accent-soft)}
+  .ctx button.on::after{content:'✓';margin-left:auto;color:var(--accent);font-weight:700}
+  .ctx hr{border:0;border-top:1px solid var(--line-soft);margin:4px 0}
   .hint{margin-top:10px;font-size:12px;color:var(--muted)}
   .saved{margin-left:12px;font-size:12px;color:var(--muted)}
   .auth{display:flex;align-items:center;gap:8px;font-size:13px}
@@ -94,8 +103,9 @@
     </tr></thead>
     <tbody id="body"></tbody>
   </table>
-  <div class="hint">시작·종료 칸에 마우스를 올리면 나오는 <b>지금</b> 버튼으로 현재 시각을 바로 넣을 수 있어요. 값은 입력 즉시 저장됩니다.</div>
+  <div class="hint">시작·종료 칸에 마우스를 올리면 나오는 <b>지금</b> 버튼으로 현재 시각을 바로 넣을 수 있어요. 시작·종료·비고 칸을 <b>우클릭</b>하면 굵게·빨간 글씨·노란 하이라이트를 켤 수 있어요. 값은 입력 즉시 저장됩니다.</div>
 </main>
+<div class="ctx" id="ctx"></div>
 <script>
 const STD_DEFAULT = '07:30';
 const BREAK_MIN = 60;      // 휴게시간(분) — 항상 차감
@@ -108,13 +118,14 @@ let data = {};               // { "2026-09-01": {s,e,b,std,m} }
 // ★ URL/키는 config.js에 있어요 — index.html만 교체해도 연결이 유지됩니다
 const SUPABASE_URL  = (window.SUPABASE_URL||'').replace(/\/rest\/v1\/?$/,'').replace(/\/$/,'');
 const SUPABASE_ANON = window.SUPABASE_ANON;
-if(!SUPABASE_URL || SUPABASE_URL.includes('YOUR-PROJECT')) alert('config.js에 Supabase URL/키를 넣어 주세요');
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+let sb=null;
+try{ if(!SUPABASE_URL||!SUPABASE_ANON||SUPABASE_URL.includes('YOUR-PROJECT')) throw 0; sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON); }
+catch(_){ sb=null; }   // config.js가 없거나 비어 있어도 표는 뜨게 (저장만 안 됨)
 let user = null;
 let memoryStore = {};        // 로그인 전 임시 저장
 
 async function load(key){
-  if(!user) return memoryStore[key] || {};
+  if(!user||!sb) return memoryStore[key] || {};
   const {data:row, error} = await sb.from('work_log').select('data').eq('month', key).maybeSingle();
   if(error){ flash('불러오기 실패: '+error.message); return memoryStore[key]||{}; }
   return row ? row.data : {};
@@ -124,6 +135,7 @@ function save(){
   clearTimeout(saveTimer);
   saveTimer=setTimeout(async()=>{
     memoryStore[monthKey]=data;
+    if(!sb){ flash('config.js 연결 정보가 없어요 — 서버 저장 안 됨'); return; }
     if(!user){ flash('로그인하면 서버에 저장돼요'); return; }
     const {error} = await sb.from('work_log').upsert(
       {user_id:user.id, month:monthKey, data, updated_at:new Date().toISOString()},
@@ -136,6 +148,7 @@ function flash(t){ const s=document.getElementById('saved'); s.textContent=t; se
 // ---------- auth: 매직링크 ----------
 function renderAuth(){
   const a=document.getElementById('auth');
+  if(!sb){ a.innerHTML='<span class="who">config.js 없음 — 서버 연결 안 됨</span>'; return; }
   a.innerHTML = user
     ? `<span class="who">${user.email}</span><button class="ghost" id="logout">로그아웃</button>`
     : `<input type="email" id="email" placeholder="이메일 → 로그인 링크 받기"><button id="login">로그인 링크 보내기</button>`;
@@ -146,10 +159,10 @@ function renderAuth(){
     flash(error ? '전송 실패: '+error.message : '메일함에서 링크를 눌러 주세요');
   };
 }
-sb.auth.onAuthStateChange(async(_e, session)=>{
+if(sb) sb.auth.onAuthStateChange(async(_e, session)=>{
   user = session?.user || null; renderAuth();
   if(monthKey){ data = await load(monthKey); render(); }
-});
+}); else renderAuth();
 
 // ---------- time helpers ----------
 const toMin = t => { if(!t) return null; const [h,m]=t.split(':').map(Number); return h*60+m; };
@@ -196,12 +209,12 @@ function render(){
       if(di===0){ const th=document.createElement('th'); th.className='week'; th.rowSpan=5; th.textContent=`${month}월 ${wi+1}주`; tr.appendChild(th); }
       const dow=dt.getDay();
       tr.innerHTML+=`<td class="date${k===today?' today':''}">${pad2(dt.getMonth()+1)}/${pad2(dt.getDate())}<span class="dow">(${DOW[dow]})</span></td>`;
-      tr.innerHTML+=`<td class="time"><input type="time" data-k="${k}" data-f="s" value="${r.s||''}"><button class="now" data-k="${k}" data-f="s">지금</button></td>`;
-      tr.innerHTML+=`<td class="time"><input type="time" data-k="${k}" data-f="e" value="${r.e||''}"><button class="now" data-k="${k}" data-f="e">지금</button></td>`;
+      tr.innerHTML+=`<td class="time${fmtCls(r,'s')}"><input type="time" data-k="${k}" data-f="s" value="${r.s||''}"><button class="now" data-k="${k}" data-f="s">지금</button></td>`;
+      tr.innerHTML+=`<td class="time${fmtCls(r,'e')}"><input type="time" data-k="${k}" data-f="e" value="${r.e||''}"><button class="now" data-k="${k}" data-f="e">지금</button></td>`;
       tr.innerHTML+=`<td class="calc">${c.work!=null?fmt(c.work):''}</td>`;
       tr.innerHTML+=`<td class="std"><input type="time" data-k="${k}" data-f="std" value="${r.std||STD_DEFAULT}"></td>`;
       tr.innerHTML+=diffCell(c.work,c.std);
-      tr.innerHTML+=`<td class="memo"><input type="text" data-k="${k}" data-f="m" value="${(r.m||'').replace(/"/g,'&quot;')}" placeholder=""></td>`;
+      tr.innerHTML+=`<td class="memo${fmtCls(r,'m')}"><input type="text" data-k="${k}" data-f="m" value="${(r.m||'').replace(/"/g,'&quot;')}" placeholder=""></td>`;
       body.appendChild(tr);
       if(c.work!=null){ wWork+=c.work; } wStd+=c.std;
     });
@@ -215,6 +228,7 @@ function render(){
   const sd=document.getElementById('sumDiff'); const d=mWork-mStd;
   sd.textContent=(d>0?'+':d<0?'-':'')+fmt(Math.abs(d)); sd.className='val '+(d>0?'over':d<0?'under':'');
 }
+const fmtCls=(r,f)=>{ const x=(r.f||{})[f]||{}; return (x.b?' fb':'')+(x.r?' fr':'')+(x.y?' fy':''); };
 const weekCls=(w,std)=>{ const d=w-std; return (d<0||d>WEEK_TOL)?'under':'ok'; };
 function diffCell(work,std,total){
   if(work==null && !total) return `<td class="diff"></td>`;
@@ -256,6 +270,38 @@ document.getElementById('body').addEventListener('click',e=>{
   const b=e.target.closest('button.now'); if(!b) return;
   const r=data[b.dataset.k]||(data[b.dataset.k]={}); r[b.dataset.f]=nowHM(); save(); render();
 });
+// ---------- 우클릭 서식 메뉴 (시작·종료·비고 칸) ----------
+const ctx=document.getElementById('ctx'); let ctxT=null;
+const CTX_ITEMS=[['b','굵게'],['r','빨간 글씨'],['y','노란 하이라이트']];
+document.getElementById('body').addEventListener('contextmenu',e=>{
+  const td=e.target.closest('td.time,td.memo'); if(!td) return;
+  const inp=td.querySelector('input'); if(!inp) return;
+  e.preventDefault();
+  ctxT={k:inp.dataset.k,f:inp.dataset.f,td};
+  drawCtx(); ctx.style.display='block';
+  ctx.style.left=Math.min(e.clientX,innerWidth-180)+'px';
+  ctx.style.top=Math.min(e.clientY,innerHeight-170)+'px';
+});
+function drawCtx(){
+  const r=data[ctxT.k]||(data[ctxT.k]={}); const x=((r.f||{})[ctxT.f])||{};
+  ctx.innerHTML=CTX_ITEMS.map(([id,l])=>`<button data-id="${id}" class="${x[id]?'on':''}">${l}</button>`).join('')
+    +`<hr><button data-id="clear">서식 지우기</button>`;
+}
+ctx.addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b||!ctxT) return;
+  const r=data[ctxT.k]||(data[ctxT.k]={}); r.f=r.f||{};
+  if(b.dataset.id==='clear'){ delete r.f[ctxT.f]; }
+  else{ const x=r.f[ctxT.f]=r.f[ctxT.f]||{}; if(x[b.dataset.id]) delete x[b.dataset.id]; else x[b.dataset.id]=1;
+        if(!Object.keys(x).length) delete r.f[ctxT.f]; }
+  if(!Object.keys(r.f).length) delete r.f;
+  ctxT.td.classList.remove('fb','fr','fy');
+  fmtCls(r,ctxT.f).trim().split(' ').filter(Boolean).forEach(c=>ctxT.td.classList.add(c));
+  save(); drawCtx();
+});
+document.addEventListener('click',e=>{ if(!ctx.contains(e.target)) ctx.style.display='none'; });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') ctx.style.display='none'; });
+window.addEventListener('scroll',()=>{ ctx.style.display='none'; },{passive:true});
+
 async function setMonth(key){
   monthKey=key; document.getElementById('month').value=key;
   data=await load(key); render();
